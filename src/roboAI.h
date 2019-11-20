@@ -183,12 +183,11 @@ void chase_ball_mv_s241(int pw);
 void chase_ball_mv_bk_s243(int pw);
 
 // penalty kick states
-void p_kick_turn_to_tar_s101(struct RoboAI *ai, double shdx, double shdy, double bsx, double bsy);
-void p_kick_drive_to_tar_s111(struct RoboAI *ai, double tarx, double tary, int *drive_fdc);
-void p_kick_turn_mv_frame_s131(struct RoboAI *ai);
-void p_kick_adj_hd_s132(struct RoboAI *ai);
-void p_kick_turn_mv_bk_s131(struct RoboAI *ai);
-void p_kick_turn_around_s141(struct RoboAI *ai);
+void p_kick_turn_s101(struct RoboAI *ai, double shdx, double shdy, double tsx, double tsy);
+void p_kick_turn_180_s102(int pw);
+void p_kick_drive_s111(int pw);
+void p_kick_mv_s141(int pw);
+void p_kick_mv_bk_s143(int pw);
 // action functions
 inline void move_forward(int pw) {
   BT_drive(LEFT_MOTOR, RIGHT_MOTOR, pw);

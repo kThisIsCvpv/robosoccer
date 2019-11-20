@@ -731,7 +731,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
     *****************************************************************************/
     // play soccor mode
     if(ai->st.state < 100) {
-      fprintf(stderr, "soccor not implemented\n");
+      fprintf(stderr, "soccer not implemented\n");
       exit(1);
     }
     // penalty kick mode
@@ -740,6 +740,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
         fprintf(stderr, "penalty kick mode, state: %d\n", ai->st.state);
         // thresholds
         double dis_tar_th = 200;
+        double theta_th = 0.90;
         // positions
         // identify opponents goal side
         int goal_px, goal_py;
@@ -765,11 +766,6 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
         tar_self_dx = tar_px - ai->st.old_scx;
         tar_self_dy = tar_py - ai->st.old_scy;
         normalize_v(&tar_self_dx, &tar_self_dy);
-        double c_theta_tar, dist_tar;
-        c_theta_tar = dottie(tar_self_dx, tar_self_dy, old_dx, old_dy);
-        dist_tar = get_distance(tar_px, tar_py, ai->st.old_scx, ai->st.old_scy);
-        fprintf(stderr, "goal loc: %d %d\n", goal_px, goal_py);
-        fprintf(stderr, "tar_loc: (%f %f) | c_tar_theta: %f  | tar_dist: %f\n", tar_px, tar_py, c_theta_tar, dist_tar);
         double s_h_dx, s_h_dy;
         s_h_dx = ai->st.sdx;
         s_h_dy = ai->st.sdy;
@@ -785,14 +781,88 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
           s_h_dx = ai->st.sdx;
           s_h_dy = ai->st.sdy;
         }
+        normalize_v(&s_h_dx, &s_h_dy);
+        // ge theta and distance
+        double c_theta_tar, dist_tar;
+        c_theta_tar = dottie(tar_self_dx, tar_self_dy, old_dx, old_dy);
+        dist_tar = get_distance(tar_px, tar_py, ai->st.old_scx, ai->st.old_scy);
+        fprintf(stderr, "goal loc: %d %d\n", goal_px, goal_py);
+        fprintf(stderr, "tar_loc: (%f %f) | c_tar_theta: %f  | tar_dist: %f\n", tar_px, tar_py, c_theta_tar, dist_tar);
+        
         switch(ai->st.state) {
-
         case 101: // turn to target location
-          if(c_theta_tar < 0) {
+          if(c_theta_tar < 0) { // facing oppsite direction
+            count = 0;
+            p_kick_turn_180_s102(18);
+            ai->st.state = 102;
+          } else if(c_theta_tar > theta_th) {// facing target location
+            fprintf(stderr, "facing the target location ------- theta: %f\n", c_theta_tar);
+            // BT_all_stop(0);
+            // ai->st.state = 101;
+            p_kick_drive_s111(15);
+            ai->st.state = 111;
+          }
 
+          else { // keep turning
+            p_kick_turn_s101(ai, s_h_dx, s_h_dy, tar_self_dx, tar_self_dy);
+            ai->st.state = 101;
+          }
+          break;
+        case 102:// turn around and checking heading vector
+          if(count < 10) {
+            count += 1;
+            p_kick_turn_180_s102(18);
+            ai->st.state = 102;
+          } else {
+            count = 0;
+            p_kick_mv_s141(8);
+            ai->st.state = 141;
           }
           break;
         case 111: // drive to target location
+          // run off angle
+          if(c_theta_tar < theta_th) {
+            p_kick_turn_s101(ai, s_h_dx, s_h_dy, tar_self_dx, tar_self_dy);
+            ai->st.state = 101;
+          }
+          // reached the target
+          else if(dist_tar  < dis_tar_th) {
+            // switch to chase ball mode
+            ai->st.state = 201;
+          }
+          // keep driving
+          else {
+            p_kick_drive_s111(15);
+            ai->st.state = 111;
+          }
+          break;
+        // states to checking heading vector
+        case 141: // moving forward to check hd direction
+          if(count < 5) {
+            count += 1;
+            p_kick_mv_s141(8);
+            ai->st.state = 141;
+          } else {
+            count = 0;
+            adjust_heading_v(ai, &old_dx, &old_dy);
+            ai->st.state = 142;
+          }
+          break;
+        case 142:
+          count = 0;
+          p_kick_mv_bk_s143(8);
+          ai->st.state = 143;
+          break;
+        case 143:
+          if(count < 5) {
+            count += 1;
+            p_kick_mv_bk_s143(8);
+            ai->st.state = 143;
+          } else {
+            count = 0;
+            p_kick_turn_s101(ai, s_h_dx, s_h_dy, tar_self_dx, tar_self_dx);
+            ai->st.state = 101;
+          }
           break;
         default:
           break;
@@ -804,7 +874,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
       if(ai->st.self != NULL && ai->st.ball != NULL) {
         fprintf(stderr, "chasing ball, state: %d\n", ai->st.state);
         // thresholds
-        double theta_th = 0.95;
+        double theta_th = 0.85;
         double dis_th = 200;
         // variables needed for turn to the ball
         double self_px, self_py, ball_px, ball_py;
@@ -819,6 +889,8 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
         b_s_dy = ball_py - self_py;
         s_h_dx = ai->st.sdx;
         s_h_dy = ai->st.sdy;
+        fprintf(stderr, "old heading: (%f, %f)\n", old_dx, old_dy);
+        fprintf(stderr, "updated heading: (%f, %f)\n", ai->st.sdx, ai->st.sdy);
         if(dottie(old_dx, old_dy, ai->st.sdx, ai->st.sdy) < 0) {
           fprintf(stderr, "suck hd reading, correcting\n");
           ai->st.self->dx *= -1.0;
@@ -865,7 +937,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
           }
           break;
         case 202: // turn around, when cos theta < -0.2 (<0)
-          if(count < 15) {
+          if(count < 10) {
             count += 1;
             chase_ball_turn_180_s202(18);
             ai->st.state = 202;
@@ -987,3 +1059,29 @@ void chase_ball_mv_bk_s243(int pw) {
   move_forward(-pw);
 }
 
+/* penalty kick states */
+void p_kick_turn_s101(struct RoboAI *ai, double shdx, double shdy, double tsx, double tsy) {
+  if(crossie_sign(shdx, shdy, tsx, tsy) > 0) {
+    fprintf(stderr, "turn left\n");
+    turn_left(8);
+  } else {
+    fprintf(stderr, "turn right\n");
+    turn_right(8);
+  }
+}
+
+void p_kick_turn_180_s102(int pw) {
+  turn_right(pw);
+}
+
+void p_kick_drive_s111(int pw) {
+  move_forward(pw);
+}
+
+void p_kick_mv_s141(int pw) {
+  move_forward(pw);
+}
+
+void p_kick_mv_bk_s143(int pw) {
+  move_forward(-pw);
+}

@@ -1,5 +1,7 @@
 #include "roboAI.h"
+
 #include <math.h>
+
 #include "model.c"
 #include "util.c"
 
@@ -413,6 +415,13 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 	char lport = MOTOR_A;
 	char rport = MOTOR_B;
 
+	// Variables for Defense
+
+	static double sg_px = 0;
+	static double sg_py = 0;
+	static double og_px = 0;
+	static double og_py = 0;
+
 	if (ai->st.state == 0 || ai->st.state == 100 || ai->st.state == 200) { // Initial set up - find own, ball, and opponent blobs
 	// Carry out self id process.
 		fprintf(stderr, "Initial state, self-id in progress...\n");
@@ -457,6 +466,21 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 				}
 			}
 
+			// update self goal position and opponent's goal position
+			const double GOAL_OFFSET = 10.0;
+
+			if (ai->st.side == 0) { // self goal on left side
+				sg_px = 0.0 + GOAL_OFFSET;
+				sg_py = 384.0;
+				og_px = 1024.0;
+				og_py = 384.0;
+			} else { // self goal on right side
+				sg_px = 1024.0 - GOAL_OFFSET;
+				sg_py = 384.0;
+				og_px = 0.0;
+				og_py = 384.0;
+			}
+
 			// Notice that the ball's blob direction is not useful! only its
 			// position and motion matter.
 		}
@@ -485,7 +509,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 		track_agents(ai, blobs);  // Currently, does nothing but endlessly track
 
 		// Calibration
-		if (1 == 0) {
+		if (1 == 1) {
 			if (ai->st.self != NULL) {
 				struct blob *self = ai->st.self;
 				int width = abs(self->x2 - self->x1);
@@ -502,76 +526,683 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 			return;
 		}
 
-		if (is_psuedo_sleeping() == 1) {
-			fprintf(stderr, "Psuedo Sleeping (Camera Lag)\n--\n");  // bot, opponent, and ball.
-			return;
-		}
-
-		// play soccor mode
+		// play soccer mode
 		if (ai->st.state < 100) {
-			if (ai->st.self != NULL && ai->st.ball != NULL) {
-				adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
+			if (ai->st.state == 1) { // Initial State: Determine Whether to Attack or Defend
 
-				double mag_self = sqrt(pow(ai->st.svx, 2) + pow(ai->st.svy, 2));
-				double mag_mag_self = sqrt(pow(ai->st.smx, 2) + pow(ai->st.smy, 2));
-				double angle_self = vector_to_angle(ai->st.sdx, ai->st.sdy);
-				fprintf(stderr, "S | (%.2f, %.2f) (%.2f, %.2f, %.2f) (%.2f, %.2f, %.2f) (%.2f, %.2f, %.2f)\n", ai->st.self->cx, ai->st.self->cy, ai->st.svx, ai->st.svy, mag_self, ai->st.sdx, ai->st.sdy, angle_self, ai->st.smx, ai->st.smy, mag_mag_self);
-				fprintf(stderr, "S | %d (%d, %d) -> (%d, %d)\n", ai->st.self->size, ai->st.self->x1, ai->st.self->y1, ai->st.self->x2, ai->st.self->y2);
+				double init_state = drand48();
 
-				double mag_ball = sqrt(pow(ai->st.bvx, 2) + pow(ai->st.bvy, 2));
-				double angle_ball = vector_to_angle(ai->st.bdx, ai->st.bdy);
-				fprintf(stderr, "B | Loc: (%.2f, %.2f) - Vel: (%.2f, %.2f - %.2f) - Dir: (%.2f, %.2f - %.2f)\n", ai->st.ball->cx, ai->st.ball->cy, ai->st.bvx, ai->st.bvy, mag_ball, ai->st.bdx, ai->st.bdy, angle_ball);
-
-				double delta_x = ai->st.ball->cx - ai->st.self->cx;
-				double delta_y = ai->st.ball->cy - ai->st.self->cy;
-				double delta_angle = vector_to_angle(delta_x, delta_y);
-				double change_angle = min_rotation(angle_prediction, delta_angle); // Change angle_prediction to angle_self
-				fprintf(stderr, "Delta Angle: %.2f\n", change_angle);
-
-				double abs_delta = fabs(change_angle);
-
-				const double abs_thresh = 20.0;
-				const int speed = 20;
-
-				if (abs_delta >= abs_thresh) {
-					int angle_time = estimate_angle_delay(abs_delta);
-
-					double pixel_mag = magnitude(delta_x, delta_y);
-					int travel_time = estimate_travel_delay(pixel_mag, CPS_FAST);
-
-					if (change_angle < 0) {
-						fprintf(stderr, "Turning to the right. Sleeping for %d ms.\n", angle_time);
-						BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
-					} else {
-						fprintf(stderr, "Turning to the left. Sleeping for %d ms.\n", angle_time);
-						BT_turn(LEFT_MOTOR, -speed, RIGHT_MOTOR, speed);
-					}
-
-					msleep(angle_time); // Rotate Angle to Face Location
-
-					fprintf(stderr, "Travelling straight to target. Sleeping for %d ms.\n", travel_time);
-					BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100); // Travel Straight to Location
-					msleep(travel_time);
-
-					BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
-
-					psuedo_sleep(CAMERA_DELAY);
-
-					angle_prediction = delta_angle;
-					fprintf(stderr, "The current angle is estimated to be around %.2f.\n", angle_prediction);
-				} else {
-					fprintf(stderr, "No angle adjustments made. (%.2f < %.2f)\n", abs_delta, abs_thresh);
+				if (init_state <= 0.3) { // Defend (Init State -> 51)
+					ai->st.state = 51;
+				} else { // Attack (Init State -> 2)
+					ai->st.state = 2;
 				}
 
-//				BT_turn(LEFT_MOTOR, -20, RIGHT_MOTOR, 20);
-//				fprintf(stderr, "%.5f\t%.5f\t%.5f\n", angle_self, ai->st.sdx, ai->st.sdy);
-//				printf("%.5f\t%.5f\t%.5f\n", angle_self, ai->st.sdx, ai->st.sdy);
-			} else {
-				fprintf(stderr, "Something is NULL!\n");
+			} else if (ai->st.state == 2) { // State 2: Fast Travel
+
+				if (ai->st.self == NULL) { // If we can't see ourself, just wait.
+					fprintf(stderr, "[State 2] Cannot see self. Waiting.\n");
+					return;
+				}
+
+				if (ai->st.ball == NULL) { // If we can't see the ball, go defend instead.
+					fprintf(stderr, "[State 2] Cannot see ball. Switching to defense [State 51].\n");
+					ai->st.state = 51;
+					return;
+				}
+
+				// Adjust the angle prediction based on the facing direction.
+				adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
+
+				// Calculate the vector from self to ball.
+				double vector_x = ai->st.ball->cx - ai->st.self->cx;
+				double vector_y = ai->st.ball->cy - ai->st.self->cy;
+
+				// Calculate the angle that faces the ball based on the vector.
+				double vector_angle = vector_to_angle(vector_x, vector_y);
+
+				// Calculate the rotation required to face the ball from the current angle.
+				double delta_angle = min_rotation(angle_prediction, vector_angle);
+				double abs_delta_angle = fabs(delta_angle);
+
+				// Calculate the pixel distance from self to the ball.
+				double distance_pixel = magnitude(vector_x, vector_y);
+
+				// Calculate the travel time from self to the ball (using fast travel).
+				const double BALL_BARRIER = 5; // We want to appear close to the ball, not on top of it.
+				int est_travel = estimate_travel_delay(distance_pixel, CPS_FAST, BALL_BARRIER);
+
+				const double ERROR_THRESH = 20.0; // If it's within |T|, we don't care.
+				const int TURN_SPEED = 20; // This is the speed of which we will turn at.
+
+				if (abs_delta_angle >= ERROR_THRESH) { // We need to turn.
+					int est_rotate = estimate_angle_delay(abs_delta_angle); // We estimate the amount of time that it takes to turn.
+
+					if (delta_angle < 0) {
+						fprintf(stderr, "[State 2] Turning to the right. Sleeping for %d ms.\n", est_rotate);
+						BT_turn(LEFT_MOTOR, TURN_SPEED, RIGHT_MOTOR, -TURN_SPEED);
+					} else {
+						fprintf(stderr, "[State 2] Turning to the left. Sleeping for %d ms.\n", est_rotate);
+						BT_turn(LEFT_MOTOR, -TURN_SPEED, RIGHT_MOTOR, TURN_SPEED);
+					}
+
+					msleep(est_rotate); // Sleep for the estimated time based on model.
+					angle_prediction = vector_angle; // We change our current predicted angle to the one we've rotated to.
+				} else { // No need to turn.
+					fprintf(stderr, "[State 2] No need to turn. (%.2f) < (%.2f)\n", abs_delta_angle, ERROR_THRESH);
+				}
+
+				// Drive straight towards the ball.
+				fprintf(stderr, "[State 2] Fast travel to the ball. Sleeping for %d ms.\n", est_travel);
+				BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
+
+				// Sleep based on the estimated time model.
+				msleep(est_travel);
+				BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+				// Wait for the camera to catch up. Switch states.
+				fprintf(stderr, "[State 2] Wait for camera delay. Switch to [State 50]. Sleeping for %d ms.\n", CAMERA_DELAY);
+				psuedo_sleep(CAMERA_DELAY);
+				ai->st.state = 50;
+
+			} else if (ai->st.state == 3) { // State 3: Position Ball and Kick
+
+				if (ai->st.self == NULL) { // If we can't see ourself, just wait.
+					fprintf(stderr, "[State 3] Cannot see self. Waiting.\n");
+					return;
+				}
+
+				if (ai->st.ball == NULL) { // If we can't see the ball, go defend instead.
+					fprintf(stderr, "[State 3] Cannot see ball. Switching to defense [State 51].\n");
+					ai->st.state = 51;
+					return;
+				}
+
+				// Adjust the angle prediction based on the facing direction.
+				adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
+
+				// Calculate the vector from self to ball.
+				double vector_x = ai->st.ball->cx - ai->st.self->cx;
+				double vector_y = ai->st.ball->cy - ai->st.self->cy;
+
+				// Calculate the angle that faces the ball based on the vector.
+				double vector_angle = vector_to_angle(vector_x, vector_y);
+
+				// Calculate the rotation required to face the ball from the current angle.
+				double delta_angle = min_rotation(angle_prediction, vector_angle);
+				double abs_delta_angle = fabs(delta_angle);
+
+				// Calculate the pixel distance from self to the ball.
+				double distance_pixel = magnitude(vector_x, vector_y);
+
+				// Calculate the travel time from self to the ball (using slow travel).
+				const double BALL_BARRIER = 0; // This is precision. We want to appear on top of the ball.
+				int est_travel = estimate_travel_delay(distance_pixel, CPS_SLOW, BALL_BARRIER);
+
+				const double ERROR_THRESH = 10.0; // If it's within |T|, we don't care.
+				const int TURN_SPEED = 20; // This is the speed of which we will turn at.
+
+				if (abs_delta_angle >= ERROR_THRESH) { // We need to turn.
+					int est_rotate = estimate_angle_delay(abs_delta_angle); // We estimate the amount of time that it takes to turn.
+
+					if (delta_angle < 0) {
+						fprintf(stderr, "[State 3] Turning to the right. Sleeping for %d ms.\n", est_rotate);
+						BT_turn(LEFT_MOTOR, TURN_SPEED, RIGHT_MOTOR, -TURN_SPEED);
+					} else {
+						fprintf(stderr, "[State 3] Turning to the left. Sleeping for %d ms.\n", est_rotate);
+						BT_turn(LEFT_MOTOR, -TURN_SPEED, RIGHT_MOTOR, TURN_SPEED);
+					}
+
+					msleep(est_rotate); // Sleep for the estimated time based on model.
+					angle_prediction = vector_angle; // We change our current predicted angle to the one we've rotated to.
+				} else { // No need to turn.
+					fprintf(stderr, "[State 3] No need to turn. (%.2f) < (%.2f)\n", abs_delta_angle, ERROR_THRESH);
+				}
+
+				// Drive straight towards the ball.
+				fprintf(stderr, "[State 3] Precise travel to the ball. Sleeping for %d ms.\n", est_travel);
+				BT_drive(LEFT_MOTOR, RIGHT_MOTOR, TURN_SPEED);
+
+				// Sleep based on the estimated time model.
+				msleep(est_travel);
+				BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+				// Wait for the camera to catch up. Switch states.
+				fprintf(stderr, "[State 3] Wait for camera delay. Switch to [State 5]. Sleeping for %d ms.\n", CAMERA_DELAY);
+				psuedo_sleep(CAMERA_DELAY);
+				ai->st.state = 5; // Camera delay, but ball could be invisible (due to camera).
+
+			} else if (ai->st.state == 50) { // State 4: Wait for Camera to Catch Up
+
+				long time_remaining = sleep_time - current_time_millis();
+
+				if (time_remaining > 0) {
+					fprintf(stderr, "[State 50] Waiting for camera delay. Time remaining: %d ms\n", time_remaining);
+					return;
+				}
+
+				fprintf(stderr, "[State 50] Attempting to find next state.\n");
+
+				if (ai->st.self == NULL) { // If we can't see ourself, just wait.
+					fprintf(stderr, "[State 50] Cannot see self. Waiting.\n");
+					return;
+				}
+
+				if (ai->st.ball == NULL) { // If we can't see the ball, go defend instead.
+					fprintf(stderr, "[State 50] Cannot see ball. Switching to defense [State 51].\n");
+					ai->st.state = 51;
+					return;
+				}
+
+				// Adjust the angle prediction based on the facing direction.
+				adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
+
+				// Calculate the vector from self to ball.
+				double vector_x = ai->st.ball->cx - ai->st.self->cx;
+				double vector_y = ai->st.ball->cy - ai->st.self->cy;
+
+				// Calculate the pixel distance from self to the ball.
+				double distance_pixel = magnitude(vector_x, vector_y);
+				double distance_cm = translate_distance(distance_pixel);
+
+				// Distance threshold.
+				const double DIST_THRESH = 25.0;
+
+				if (distance_cm <= DIST_THRESH) { // We're close enough to the ball. Start fine tuning.
+					fprintf(stderr, "[State 50] Distance is close to the ball (%.2f cm). Switch to [State 3].\n", distance_cm);
+					ai->st.state = 3;
+				} else { // We're still pretty far away from the ball.
+					double ball_x = ai->st.ball->cx;
+					double self_x = ai->st.self->cx;
+					double abs_x = abs(ball_x - self_x);
+
+					if (ai->st.side == 0) { // Our goal is on the left side.
+						if (abs_x >= DIST_THRESH && self_x > ball_x) { // We are on the opposite side of the ball.
+							fprintf(stderr, "[State 50] On opposite side of the ball (S: %.2f, B: %.2f). Switch to [State 51].\n", self_x, ball_x);
+							ai->st.state = 51;
+						} else { // We're still within range. Go back to fast kick.
+							fprintf(stderr, "[State 50] Distance is close to the ball (%.2f cm). Switch to [State 2].\n", distance_cm);
+							ai->st.state = 2;
+						}
+					} else { // Our goal is on the right side.
+						if (abs_x >= DIST_THRESH && self_x < ball_x) { // We are on the opposite side of the ball.
+							fprintf(stderr, "[State 50] On opposite side of the ball (S: %.2f, B: %.2f). Switch to [State 51].\n", self_x, ball_x);
+							ai->st.state = 51;
+						} else { // We're still within range. Go back to fast kick.
+							fprintf(stderr, "[State 50] Distance is close to the ball (%.2f cm). Switch to [State 2].\n", distance_cm);
+							ai->st.state = 2;
+						}
+					}
+				}
+
+			} else if (ai->st.state == 5) { // Wait for the camera, but ball could be invisible.
+
+				long time_remaining = sleep_time - current_time_millis();
+
+				if (time_remaining > 0) {
+					fprintf(stderr, "[State 5] Waiting for camera delay. Time remaining: %d ms\n", time_remaining);
+					return;
+				}
+
+				fprintf(stderr, "[State 5] Attempting to find next state.\n");
+
+				if (ai->st.self == NULL) { // If we can't see ourself, just wait.
+					fprintf(stderr, "[State 5] Cannot see self. Waiting.\n");
+					return;
+				}
+
+				if (ai->st.ball == NULL) { // We are probably on top of the ball. This is good enough.
+					fprintf(stderr, "[State 5] Cannot see ball. We are on top of it? Switch to [State 6].\n");
+					ai->st.state = 6;
+					return;
+				}
+
+				// Calculate the vector from self to ball.
+				double vector_x = ai->st.ball->cx - ai->st.self->cx;
+				double vector_y = ai->st.ball->cy - ai->st.self->cy;
+
+				// Calculate the pixel distance from self to the ball.
+				double distance_pixel = magnitude(vector_x, vector_y);
+				double distance_cm = translate_distance(distance_pixel);
+
+				// Distance threshold. We want to be on top.
+				const double DIST_THRESH = 12.0;
+
+				if (distance_cm <= DIST_THRESH) { // We're on top of the ball. Good enough.
+					fprintf(stderr, "[State 5] We are on top of the ball. Switch to [State 6].\n");
+					ai->st.state = 6;
+					return;
+				} else {
+					fprintf(stderr, "[State 5] We are not close enough to the ball. Switch to [State 50].\n");
+					ai->st.state = 50;
+					return;
+				}
+
+			} else if (ai->st.state == 6) { // We are on top of the ball. We can penalty kick it now.
+
+				fprintf(stderr, "[State 6] Performing Penalty Kick.\n");
+
+				if (ai->st.self == NULL) { // If we can't see ourself, just wait.
+					fprintf(stderr, "[State 6] Cannot see self. Waiting.\n");
+					return;
+				}
+
+				// Adjust the angle prediction based on the facing direction.
+				adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
+
+				// Find the goal post.
+				double goal_x, goal_y;
+				goal_y = ARENA_HEIGHT / 2; // Center of the arena on the vertical.
+
+				if (ai->st.side == 0) { // Our goal is on the left side.
+					// We want to kick to the right side.
+					goal_x = ARENA_WIDTH;
+				} else { // Our goal is on the right side.
+					// We want to kick to the left side.
+					goal_x = 0;
+				}
+
+				// Calculate the vector from self to the goal.
+				double vector_x = goal_x - ai->st.self->cx;
+				double vector_y = goal_y - ai->st.self->cy;
+
+				// Calculate the angle that faces the ball based on the vector.
+				double vector_angle = vector_to_angle(vector_x, vector_y);
+
+				// Calculate the rotation required to face the ball from the current angle.
+				double delta_angle = min_rotation(angle_prediction, vector_angle);
+				double abs_delta_angle = fabs(delta_angle);
+
+				const double ERROR_THRESH = 20.0; // If it's within |T|, we don't care.
+				const int TURN_SPEED = 20; // This is the speed of which we will turn at.
+
+				if (abs_delta_angle >= ERROR_THRESH) { // We need to turn.
+					int est_rotate = estimate_angle_delay(abs_delta_angle); // We estimate the amount of time that it takes to turn.
+
+					if (delta_angle < 0) {
+						fprintf(stderr, "[State 6] Turning to the right. Sleeping for %d ms.\n", est_rotate);
+						BT_turn(LEFT_MOTOR, TURN_SPEED, RIGHT_MOTOR, -TURN_SPEED);
+					} else {
+						fprintf(stderr, "[State 6] Turning to the left. Sleeping for %d ms.\n", est_rotate);
+						BT_turn(LEFT_MOTOR, -TURN_SPEED, RIGHT_MOTOR, TURN_SPEED);
+					}
+
+					msleep(est_rotate); // Sleep for the estimated time based on model.
+					angle_prediction = vector_angle; // We change our current predicted angle to the one we've rotated to.
+				} else { // No need to turn.
+					fprintf(stderr, "[State 6] No need to turn. (%.2f) < (%.2f)\n", abs_delta_angle, ERROR_THRESH);
+				}
+
+				// Drive straight towards the ball.
+				const int KICK_TIME = 1000; // This is the speed of which we will turn at.
+				fprintf(stderr, "[State 6] Kicking the ball ball. Sleeping for %d ms.\n", KICK_TIME);
+				BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
+
+				// Sleep based on the estimated time model.
+				msleep(KICK_TIME);
+				BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+				// Wait for the camera to catch up. Switch states.
+				fprintf(stderr, "[State 6] Wait for camera delay. Switch to [State 50]. Sleeping for %d ms.\n", CAMERA_DELAY);
+				psuedo_sleep(CAMERA_DELAY);
+				ai->st.state = 50;
+
+			} else if (ai->st.state >= 51) {
+//				ai->st.state = 50;
+//				return;
+
+				if (is_psuedo_sleeping() == 1) {
+					fprintf(stderr, "[State %d] Psuedo Sleeping (Camera Lag)\n", ai->st.state);  // bot, opponent, and ball.
+					return;
+				}
+
+				// If camera can't identify the ball, drive to self goal
+				if (ai->st.ball == NULL) {
+					fprintf(stderr, "[State %d] Unable to find ball. Driving to goal [State 71].\n", ai->st.state);
+					ai->st.state = 71;
+					return;
+				}
+
+				if (ai->st.self != NULL) {
+					int defend = -1; // We start by assuming that we don't need to defend.
+
+					// Self heading angle
+					adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
+					const int speed = 20;
+
+					// Check for conditions to keep defending
+
+					// This is our target location (where we want to head to).
+					double def_tar_px, def_tar_py;
+					def_tar_px = sg_px; // We want to head to our "own goal" by default.
+
+					if (ai->st.ball->cy > 384.0) { // If ball on bottom side of the field, move self up
+						def_tar_py = ai->st.ball->cy / 2.0;
+					} else { // Otherwise, move self down.
+						def_tar_py = ai->st.ball->cy + ((768.0 - ai->st.ball->cy) / 2.0);
+					}
+
+					// Check for ball's position. It must be between us and the goal.
+					if (ai->st.side == 0 && ai->st.ball->cx < ai->st.self->cx) {
+						def_tar_px = (ai->st.ball->cx) / 2.0;
+						defend = 1;
+						fprintf(stderr, "[State %d] Need to defend: ball is between goal and player.\n", ai->st.state);
+					} else if (ai->st.side == 1 && ai->st.ball->cx > ai->st.self->cx) {
+						def_tar_px = ai->st.ball->cx + (1024.0 - ai->st.ball->cx) / 2.0;
+						defend = 1;
+						fprintf(stderr, "[State %d] Need to defend: ball is between goal and player.\n", ai->st.state);
+					}
+
+					if (ai->st.opp == NULL) {
+						fprintf(stderr, "States: Opponment is null.");
+					} else {
+						fprintf(stderr, "States: (%.2f, %.2f) (%.2f, %.2f) (%.2f, %.2f)\n", ai->st.ball->cx, ai->st.ball->cy, ai->st.self->cx, ai->st.self->cy, ai->st.opp->cx, ai->st.opp->cy);
+					}
+
+					// This is the vector from self to the ball.
+					double delta_x = ai->st.ball->cx - ai->st.self->cx;
+					double delta_y = ai->st.ball->cy - ai->st.self->cy;
+
+					// Check for ball's distance for both self and opponent.
+					double dist_ball_self = magnitude(delta_x, delta_y);
+					double dist_ball_opp;
+
+					if (ai->st.opp != NULL) {
+						dist_ball_opp = magnitude(ai->st.ball->cx - ai->st.opp->cx, ai->st.ball->cy - ai->st.opp->cy);
+
+						// Translate pixels to centimeters.
+						dist_ball_self = translate_distance(dist_ball_self);
+						dist_ball_opp = translate_distance(dist_ball_opp);
+
+						// We need to defend if the ball is closer to the opponent than it is to us by more than 10 centimeters.
+						if (dist_ball_self > dist_ball_opp + 10) {
+							defend = 1;
+							fprintf(stderr, "[State %d] Need to defend: ball closer to opponent (%.2f) than to self (%.2f).\n", ai->st.state, dist_ball_opp, dist_ball_self);
+						} else {
+							fprintf(stderr, "[State %d] Distance from ball: S (%.2f cm) | O (%.2f cm)\n", ai->st.state, dist_ball_self, dist_ball_opp);
+						}
+					} else {
+						defend = 1;
+					}
+
+					// If we don't need to defend, switch to attack mode.
+					if (defend != 1) {
+						BT_all_stop(0);
+						ai->st.state = 50;
+						fprintf(stderr, "[State %d] Don't need to defend. Switch to attack mode [State 50].\n", ai->st.state);
+						return;
+					}
+
+					// Check states for defending.
+					if (ai->st.state == 51) {
+						// Turning to the target location.
+
+						// This is the vector to the target location.
+						double tar_self_dx = def_tar_px - ai->st.self->cx;
+						double tar_self_dy = def_tar_py - ai->st.self->cy;
+
+						// This is the distance from the destination.
+						double tar_mag = magnitude(tar_self_dx, tar_self_dy);
+
+						// This is the angle to the target location.
+						double tar_self_angle = vector_to_angle(tar_self_dx, tar_self_dy);
+						tar_self_angle = min_rotation(angle_prediction, tar_self_angle);
+
+						if (fabs(tar_self_angle) < 20) { // If we are facing the target location, drive forward.
+							// drive to the location
+
+							int travel_time = estimate_travel_delay(tar_mag, CPS_SLOW, 0);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 20);
+
+							msleep(travel_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							ai->st.state = 61;
+							fprintf(stderr, "[State 51] Facing target destination. Switch to [State 61].\n");
+						} else { // We are not facing the target location. Turn the robot.
+							int angle_time = estimate_angle_delay(tar_self_angle);
+
+							if (tar_self_angle < 0) {
+								// rotate right
+								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
+							} else {
+								BT_turn(LEFT_MOTOR, -speed, RIGHT_MOTOR, speed);
+							}
+
+							msleep(angle_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							// Keep turning. The state remains the same.
+							ai->st.state = 51;
+							fprintf(stderr, "[State 51] Need to turn to the destination. Remain [State 51].\n");
+						}
+
+					} else if (ai->st.state == 61) {
+						// Drive to target location.
+
+						// Check if the bot still facing the correct angle.
+						double tar_self_dx = def_tar_px - ai->st.self->cx;
+						double tar_self_dy = def_tar_py - ai->st.self->cy;
+
+						// Retrieve the angle that we need to face.
+						double tar_self_angle = vector_to_angle(tar_self_dx, tar_self_dy);
+						tar_self_angle = min_rotation(angle_prediction, tar_self_angle);
+
+						// Check if we reached the target
+						double dist_tar_self = magnitude(tar_self_dx, tar_self_dy);
+						dist_tar_self = translate_distance(dist_tar_self);
+
+						// Now we are between. Less than X centimeters.
+						if (dist_tar_self < 10) {
+							BT_all_stop(0);
+
+							if (ai->st.side == 0) { // Own side on left, switch to attack mode.
+								if (ai->st.ball->cx > (512 + 10)) {
+									ai->st.state = 50;
+									fprintf(stderr, "[State 61] Ball is on opponent's side. Switch to [State 50].\n");
+								} else { // keep defending
+									ai->st.state = 71;
+									fprintf(stderr, "[State 61] We are at destination. Drive to goal from [State 71].\n");
+								}
+							} else { // Own side on right, switch to attack mode.
+								if (ai->st.ball->cx < (512 - 10)) {
+									ai->st.state = 50;
+									fprintf(stderr, "[State 61] Ball is on opponent's side. Switch to [State 50].\n");
+								} else {
+									ai->st.state = 71;
+									fprintf(stderr, "[State 61] We are at destination. Drive to goal from [State 71].\n");
+								}
+							}
+						} else if (fabs(tar_self_angle) < 20) { // If still in the angle, keep driving.
+							// This is the distance from the destination.
+							double tar_mag = magnitude(tar_self_dx, tar_self_dy);
+							int travel_time = estimate_travel_delay(tar_mag, CPS_SLOW, 0);
+
+							// Drive to the location
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 20);
+
+							msleep(travel_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							ai->st.state = 61;
+							fprintf(stderr, "[State 61] Keep driving to the target location. Remain on [State 61].\n");
+						} else { // If not, stop and correct angle
+							BT_all_stop(0);
+							ai->st.state = 81;
+							fprintf(stderr, "[State 61] Arrive at target location. Switch to [State 81].\n");
+						}
+
+					} else if (ai->st.state == 71) { // Defending the ball when it's on own side, move to the goal.
+						double dx = sg_px - ai->st.self->cx;
+						double dy = sg_py - ai->st.self->cy;
+
+						double tar_angle = vector_to_angle(dx, dy);
+						tar_angle = min_rotation(angle_prediction, tar_angle);
+
+						if (fabs(tar_angle) < 20) {
+							// This is the distance from the destination.
+							double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(tar_mag, CPS_SLOW, 0);
+
+							// Drive to the location
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 20);
+
+							msleep(travel_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							ai->st.state = 72;
+							fprintf(stderr, "[State 71] Angle is aligned to destination. Switch to [State 72].\n");
+						} else {
+							int angle_time = estimate_angle_delay(tar_angle);
+
+							if (tar_angle < 0) { // Rotate right
+								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
+							} else { // Rotate left
+								BT_turn(LEFT_MOTOR, -speed, RIGHT_MOTOR, speed);
+							}
+
+							msleep(angle_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							// Keep turning.
+							ai->st.state = 71;
+							fprintf(stderr, "[State 71] Keep driving to the target location. Remain on [State 71].\n");
+						}
+					} else if (ai->st.state == 72) {
+						// Drive to the goal.
+						double dx = sg_px - ai->st.self->cx;
+						double dy = sg_py - ai->st.self->cy;
+
+						double tar_angle = vector_to_angle(dx, dy);
+						tar_angle = min_rotation(angle_prediction, tar_angle);
+
+						// Check if we reached the target
+						double dist_tar_self = magnitude(dx, dy);
+						dist_tar_self = translate_distance(dist_tar_self);
+
+						// We are at the goal
+						if (dist_tar_self < 8) {
+							BT_all_stop(0);
+
+							// Own side on left
+							ai->st.state = 81;
+							fprintf(stderr, "[State 72] We are at the goal. Switch to [State 81].\n");
+						} else if (fabs(tar_angle) < 8) { // If still in the angle, keep driving
+							double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(tar_mag, CPS_SLOW, 0);
+
+							// Drive to the location
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 20);
+
+							msleep(travel_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							ai->st.state = 72;
+							fprintf(stderr, "[State 72] Keep driving to the target location. Remain on [State 72].\n");
+						} else {
+							BT_all_stop(0);
+							ai->st.state = 71;
+
+							fprintf(stderr, "[State 72] Angle is not aligned. Switch back to [State 71].\n");
+						}
+					} else if (ai->st.state == 81) {
+						// Reached to our goal in defend mode
+						// Turn to the ball
+						double dx = ai->st.ball->cx - ai->st.self->cx;
+						double dy = ai->st.ball->cy - ai->st.self->cy;
+
+						double tar_angle = vector_to_angle(dx, dy);
+						tar_angle = min_rotation(angle_prediction, tar_angle);
+
+						// Check if we reached the target
+						double dist_tar_self = magnitude(dx, dy);
+						dist_tar_self = translate_distance(dist_tar_self);
+
+						if (fabs(tar_angle) < 20) {
+							double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(tar_mag, CPS_SLOW, 0);
+
+							// Drive to the location
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 20);
+
+							msleep(travel_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							ai->st.state = 82;
+							fprintf(stderr, "[State 81] Drive to the ball. Switch to [State 82].\n");
+						} else {
+							int angle_time = estimate_angle_delay(tar_angle);
+
+							if (tar_angle < 0) {
+								// rotate right
+								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
+							} else {
+								BT_turn(LEFT_MOTOR, -speed, RIGHT_MOTOR, speed);
+							}
+
+							msleep(angle_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							// keep turnning
+							ai->st.state = 81;
+							fprintf(stderr, "[State 81] We need to turn to the ball. Remain on [State 81].\n");
+						}
+					} else if (ai->st.state == 82) {
+						double dx = ai->st.ball->cx - ai->st.self->cx;
+						double dy = ai->st.ball->cy - ai->st.self->cy;
+
+						double tar_angle = vector_to_angle(dx, dy);
+						tar_angle = min_rotation(angle_prediction, tar_angle);
+
+						// Check if we reached the target
+						double dist_tar_self = magnitude(dx, dy);
+						dist_tar_self = translate_distance(dist_tar_self);
+
+						if (dist_tar_self < 8) { // we are at the goal
+							BT_all_stop(0);
+							// own side on left
+							ai->st.state = 50;
+						} else if (fabs(tar_angle) < 8) { // if still in the angle, keep driving
+							double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(tar_mag, CPS_SLOW, 0);
+
+							// Drive to the location
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 50);
+
+							msleep(travel_time);
+							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
+
+							psuedo_sleep(CAMERA_DELAY);
+
+							ai->st.state = 82;
+							fprintf(stderr, "[State 81] Drive to the ball. Remain on [State 82].\n");
+						} else { // if not, stop and correct angle
+							BT_all_stop(0);
+							ai->st.state = 81;
+							fprintf(stderr, "[State 81] We need to turn to the ball. Switch to [State 81].\n");
+						}
+					} else {
+						fprintf(stderr, "What state is that? Switching from Defense [State %d] to Attack [State 50].\n", ai->st.state);
+						ai->st.state = 50;
+					}
+				}
 			}
-
-			fprintf(stderr, "--\n");
-
 		}
 		// penalty kick mode
 		else if (ai->st.state < 200) {

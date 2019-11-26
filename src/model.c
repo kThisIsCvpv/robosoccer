@@ -8,7 +8,7 @@
 #define DPS 66.6333715
 
 #define MAX_DPS 40.0
-#define CAMERA_DELAY 3000
+#define CAMERA_DELAY 2000
 
 // Arena Dimensions (Webcam)
 #define ARENA_WIDTH 1024.0
@@ -57,8 +57,8 @@ double translate_distance(double pixels) {
 	return as_centimeters;
 }
 
-int estimate_travel_delay(double pixels, double speed) {
-	double centimeters = translate_distance(pixels);
+int estimate_travel_delay(double pixels, double speed, double barrier) {
+	double centimeters = translate_distance(pixels) - barrier;
 	double seconds = centimeters / speed;
 
 	int millis = ceil(seconds * 1000);

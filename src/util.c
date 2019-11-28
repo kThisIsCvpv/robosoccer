@@ -1,4 +1,3 @@
-#include <bits/types/struct_timeval.h>
 #include <math.h>
 #include <sys/time.h>
 #include <time.h>
@@ -59,3 +58,4 @@ int is_psuedo_sleeping() {
 		return 0;
 	}
 }
+

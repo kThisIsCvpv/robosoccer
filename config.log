@@ -36,8 +36,8 @@ PATH: /bin
 PATH: /usr/games
 PATH: /usr/local/games
 PATH: /snap/bin
-PATH: //home/stormneo7/Downloads/jdk1.8.0_231/bin
-PATH: //home/stormneo7/Downloads/jdk1.8.0_231/bin
+PATH: //usr/java/jre1.8.0_221/bin
+PATH: //usr/java/jre1.8.0_221/bin
 
 
 ## ----------- ##

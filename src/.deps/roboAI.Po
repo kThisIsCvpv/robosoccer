@@ -189,7 +189,7 @@ roboAI.o: roboAI.c /usr/include/stdc-predef.h roboAI.h \
  /usr/include/bluetooth/bluetooth.h /usr/include/byteswap.h \
  /usr/include/netinet/in.h /usr/include/x86_64-linux-gnu/bits/in.h \
  /usr/include/bluetooth/hci.h /usr/include/bluetooth/hci_lib.h \
- /usr/include/bluetooth/rfcomm.h API/bytecodes.h model.c util.c
+ /usr/include/bluetooth/rfcomm.h API/bytecodes.h model.c util.c music.c
 
 /usr/include/stdc-predef.h:
 
@@ -694,3 +694,5 @@ API/bytecodes.h:
 model.c:
 
 util.c:
+
+music.c:

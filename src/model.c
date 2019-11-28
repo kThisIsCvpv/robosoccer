@@ -19,8 +19,8 @@
 #define ROBO_REAL_HEIGHT 5.6
 
 // Robot Measurements (Webcam)
-#define ROBO_ARENA_WIDTH 145.0
-#define ROBO_ARENA_HEIGHT 48.0
+#define ROBO_ARENA_WIDTH 119.0
+#define ROBO_ARENA_HEIGHT 46.0
 
 // Travel Distance (cm) per Second @ Speed 20
 #define CPS_SLOW 6.4

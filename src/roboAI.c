@@ -864,7 +864,9 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 				psuedo_sleep(CAMERA_DELAY);
 				ai->st.state = 50;
 
-			} else if (ai->st.state >= 51) {
+			}
+      // defending 
+      else if (ai->st.state >= 51) {
 //				ai->st.state = 50;
 //				return;
 
@@ -890,9 +892,22 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 					adjust_angle_by_direction(ai->st.sdx, ai->st.sdy, MAX_DPS);
 					const int speed = 20;
 
-					// Check for conditions to keep defending
-
-					// This is our target location (where we want to head to).
+					/**************** Check for conditions if we need to keep defending ****************/
+					// This is our target location, if the ball is between our robot and our goal
+          // We'll make our robot go middle of the ball and edges
+          // ie:
+          // *************************************************
+          // *                                               *
+          // *                                               *
+          // *                                               *
+          // g            ball                               *
+          // o             |                                 *
+          // a             |              our                *
+          // l     tar     |             robot               *
+          // *-----loc-----|                                 *
+          // *             |                                 *
+          // *             |                                 *
+          // *************************************************
 					double def_tar_px, def_tar_py;
 					def_tar_px = sg_px; // We want to head to our "own goal" by default.
 
@@ -903,6 +918,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 					}
 
 					// Check for ball's position. It must be between us and the goal.
+          // different conditions based on our own side
 					if (ai->st.side == 0 && ai->st.ball->cx < ai->st.self->cx) {
 						def_tar_px = (ai->st.ball->cx) / 2.0;
 						defend = 1;
@@ -919,20 +935,65 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 						fprintf(stderr, "States: (%.2f, %.2f) (%.2f, %.2f) (%.2f, %.2f)\n", ai->st.ball->cx, ai->st.ball->cy, ai->st.self->cx, ai->st.self->cy, ai->st.opp->cx, ai->st.opp->cy);
 					}
 
-					// This is the vector from self to the ball.
+          // variables for self and target location
+          double tar_self_dx = def_tar_px - ai->st.self->cx;
+          double tar_self_dy = def_tar_py - ai->st.self->cy;
+          double dist_tar_self = magnitude(tar_self_dx, tar_self_dy);
+          double dist_tar_self_cm = translate_distance(dist_tar_self); // translate pixel to cm
+          double tar_self_angle = vector_to_angle(tar_self_dx, tar_self_dy);
+          double tar_self_rotation = min_rotation(angle_prediction, tar_self_angle);
+
+          // variables for self and self goal (sg)
+          double sg_self_x = sg_px - ai->st.self->cx;
+          double sg_self_y = sg_py - ai->st.self->cy;
+          double dist_sg_self = magnitude(sg_self_x, sg_self_y);
+          double dist_sg_self_cm = translate_distance(dist_sg_self); // translate pixel to cm
+          double sg_self_angle = vector_to_angle(sg_self_x, sg_self_y);
+          double sg_self_rotation = min_rotation(angle_prediction, sg_self_angle);
+
+					// Variables for ball and self status (vector and distance)
 					double delta_x = ai->st.ball->cx - ai->st.self->cx;
 					double delta_y = ai->st.ball->cy - ai->st.self->cy;
-
-					// Check for ball's distance for both self and opponent.
 					double dist_ball_self = magnitude(delta_x, delta_y);
-					double dist_ball_opp;
+					double dist_ball_self_cm = translate_distance(dist_ball_self);
+          double ball_self_angle = vector_to_angle(delta_x, delta_y);
+          double ball_self_rotation = min_rotation(angle_prediction, ball_self_angle);
 
-					if (ai->st.opp != NULL) {
-						dist_ball_opp = magnitude(ai->st.ball->cx - ai->st.opp->cx, ai->st.ball->cy - ai->st.opp->cy);
+
+					// variables for ball and opponent status (vector and distance)
+          double ball_opp_x = -1;
+          double ball_opp_y = -1;
+					double dist_ball_opp = -1;
+          double dist_ball_opp_cm = -1;
+          double ball_opp_angle = -1;
+          double ball_opp_rotation = -1;
+
+          // variables for self and oppponent status (vector and distance)
+          double self_opp_x = -1;
+          double self_opp_y = -1;
+          double dist_self_opp; = -1;
+          double dist_self_opp_cm = -1;
+					double self_opp_angle = -1;
+          double self_opp_rotation = -1;
+
+          if (ai->st.opp != NULL) {
+            // compute ball and opponent variables
+            ball_opp_x = ai->st.ball->cx - ai->st.opp->cx;
+            ball_opp_y = ai->st.ball->cy - ai->st.opp->cy;
+						dist_ball_opp = magnitude(ball_opp_x, ball_opp_y);
+            ball_opp_angle = vector_to_angle(ball_opp_x, ball_opp_y);
+            ball_opp_rotation = min_rotation(angle_prediction, ball_opp_angle);
+
+            // compute self and opponent variables
+            self_opp_x = ai->st.opp->cx - ai->st.self->cx;
+            self_opp_y = ai->st.opp->cy - ai->st.self->cy;
+            dist_self_opp = magnitude(self_opp_x, self_opp_y);
+            self_opp_angle = vector_to_angle(self_opp_x, self_opp_y);
+            self_opp_rotation = min_rotation(angle_prediction, self_opp_angle);
 
 						// Translate pixels to centimeters.
-						dist_ball_self = translate_distance(dist_ball_self);
-						dist_ball_opp = translate_distance(dist_ball_opp);
+						dist_ball_opp_cm = translate_distance(dist_ball_opp);
+            dist_self_opp_cm = translate_distance(dist_self_opp);
 
 						// We need to defend if the ball is closer to the opponent than it is to us by more than 10 centimeters.
 						if (dist_ball_self > dist_ball_opp + 10) {
@@ -942,7 +1003,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							fprintf(stderr, "[State %d] Distance from ball: S (%.2f cm) | O (%.2f cm)\n", ai->st.state, dist_ball_self, dist_ball_opp);
 						}
 					} else {
-						defend = 1;
+						defend = 1; // switch to attack when there is no opponent?
 					}
 
 					// If we don't need to defend, switch to attack mode.
@@ -958,23 +1019,23 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 					if (ai->st.state == 51) {
 						// Turning to the target location.
 
-						// This is the vector to the target location.
-						double tar_self_dx = def_tar_px - ai->st.self->cx;
-						double tar_self_dy = def_tar_py - ai->st.self->cy;
+						// // This is the vector to the target location.
+						// double tar_self_dx = def_tar_px - ai->st.self->cx;
+						// double tar_self_dy = def_tar_py - ai->st.self->cy;
 
 						fprintf(stderr, "[State 51] Target: (%.2f, %.2f) -> (%.2f, %.2f)\n", ai->st.self->cx, ai->st.self->cy, def_tar_px, def_tar_py);
 
 						// This is the distance from the destination.
-						double tar_mag = magnitude(tar_self_dx, tar_self_dy);
+						// double tar_mag = magnitude(tar_self_dx, tar_self_dy);
 
 						// This is the angle to the target location.
-						double tar_angle = vector_to_angle(tar_self_dx, tar_self_dy);
-						double rotation = min_rotation(angle_prediction, tar_angle);
+						// double tar_angle = vector_to_angle(tar_self_dx, tar_self_dy);
+						// double rotation = min_rotation(angle_prediction, tar_angle);
 
-						if (fabs(rotation) < BARRIER_ANGLE) { // If we are facing the target location, drive forward.
+						if (fabs(tar_self_rotation) < BARRIER_ANGLE) { // If we are facing the target location, drive forward.
 							// drive to the location
 
-							int travel_time = estimate_travel_delay(tar_mag, CPS_FAST, 0);
+							int travel_time = estimate_travel_delay(dist_tar_self, CPS_FAST, 0);
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
 
 							msleep(travel_time);
@@ -985,8 +1046,8 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							ai->st.state = 61;
 							fprintf(stderr, "[State 51] Facing target destination. Switch to [State 61].\n");
 						} else { // We are not facing the target location. Turn the robot.
-							fprintf(stderr, "[State 51] Need to turn to the destination (%.2f -> %.2f). Remain [State 51].\n", angle_prediction, rotation);
-							int angle_time = estimate_angle_delay(rotation);
+							fprintf(stderr, "[State 51] Need to turn to the destination (%.2f -> %.2f). Remain [State 51].\n", angle_prediction, tar_self_rotation);
+							int angle_time = estimate_angle_delay(tar_self_rotation);
 
 							if (rotation < 0) {
 								// rotate right
@@ -1000,7 +1061,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							msleep(angle_time);
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
 
-							angle_prediction = tar_angle;
+							angle_prediction = tar_self_angle;
 							psuedo_sleep(CAMERA_DELAY);
 
 							// Keep turning. The state remains the same.
@@ -1011,19 +1072,19 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 						// Drive to target location.
 
 						// Check if the bot still facing the correct angle.
-						double tar_self_dx = def_tar_px - ai->st.self->cx;
-						double tar_self_dy = def_tar_py - ai->st.self->cy;
+						// double tar_self_dx = def_tar_px - ai->st.self->cx;
+						// double tar_self_dy = def_tar_py - ai->st.self->cy;
 
 						// Retrieve the angle that we need to face.
-						double tar_self_angle = vector_to_angle(tar_self_dx, tar_self_dy);
-						tar_self_angle = min_rotation(angle_prediction, tar_self_angle);
+						// double tar_self_angle = vector_to_angle(tar_self_dx, tar_self_dy);
+						// tar_self_angle = min_rotation(angle_prediction, tar_self_angle);
 
 						// Check if we reached the target
-						double dist_tar_self = magnitude(tar_self_dx, tar_self_dy);
-						dist_tar_self = translate_distance(dist_tar_self);
+						// double dist_tar_self = magnitude(tar_self_dx, tar_self_dy);
+						// dist_tar_self = translate_distance(dist_tar_self);
 
 						// Now we are between. Less than X centimeters.
-						if (dist_tar_self < BARRIER_RADIUS) {
+						if (dist_tar_self_cm < BARRIER_RADIUS) {
 							BT_all_stop(0);
 
 							if (ai->st.side == 0) { // Own side on left, switch to attack mode.
@@ -1047,8 +1108,8 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							}
 						} else if (fabs(tar_self_angle) < BARRIER_ANGLE) { // If still in the angle, keep driving.
 							// This is the distance from the destination.
-							double tar_mag = magnitude(tar_self_dx, tar_self_dy);
-							int travel_time = estimate_travel_delay(tar_mag, CPS_FAST, 0);
+							// double tar_mag = magnitude(tar_self_dx, tar_self_dy);
+							int travel_time = estimate_travel_delay(dist_tar_self, CPS_FAST, 0);
 
 							// Drive to the location
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
@@ -1066,17 +1127,19 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							fprintf(stderr, "[State 61] Arrive at target location. Switch to [State 71].\n");
 						}
 
-					} else if (ai->st.state == 71) { // Defending the ball when it's on own side, move to the goal.
-						double dx = sg_px - ai->st.self->cx;
-						double dy = sg_py - ai->st.self->cy;
+					} 
+          // TODO: drive to goal
+          else if (ai->st.state == 71) { // Defending the ball when it's on own side, move to the goal.
+						// double dx = sg_px - ai->st.self->cx;
+						// double dy = sg_py - ai->st.self->cy;
 
-						double target_angle = vector_to_angle(dx, dy);
-						double rotation = min_rotation(angle_prediction, target_angle);
+						// double target_angle = vector_to_angle(dx, dy);
+						// double rotation = min_rotation(angle_prediction, target_angle);
 
-						if (fabs(rotation) < BARRIER_ANGLE) {
+						if (fabs(sg_self_rotation) < BARRIER_ANGLE) {
 							// This is the distance from the destination.
-							double tar_mag = magnitude(dx, dy);
-							int travel_time = estimate_travel_delay(tar_mag, CPS_FAST, 0);
+							// double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(dist_sg_self, CPS_FAST, 0);
 
 							// Drive to the location
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
@@ -1089,7 +1152,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							ai->st.state = 72;
 							fprintf(stderr, "[State 71] Angle is aligned to destination. Switch to [State 72].\n");
 						} else {
-							int angle_time = estimate_angle_delay(rotation);
+							int angle_time = estimate_angle_delay(sg_self_rotation);
 
 							if (rotation < 0) { // Rotate right
 								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
@@ -1100,7 +1163,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							msleep(angle_time);
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
 
-							angle_prediction = target_angle;
+							angle_prediction = sg_self_angle;
 							psuedo_sleep(CAMERA_DELAY);
 
 							// Keep turning.
@@ -1109,26 +1172,26 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 						}
 					} else if (ai->st.state == 72) {
 						// Drive to the goal.
-						double dx = sg_px - ai->st.self->cx;
-						double dy = sg_py - ai->st.self->cy;
+						// double dx = sg_px - ai->st.self->cx;
+						// double dy = sg_py - ai->st.self->cy;
 
-						double tar_angle = vector_to_angle(dx, dy);
-						tar_angle = min_rotation(angle_prediction, tar_angle);
+						// double tar_angle = vector_to_angle(dx, dy);
+						// tar_angle = min_rotation(angle_prediction, tar_angle);
 
 						// Check if we reached the target
-						double dist_tar_self = magnitude(dx, dy);
-						dist_tar_self = translate_distance(dist_tar_self);
+						// double dist_tar_self = magnitude(dx, dy);
+						// dist_tar_self = translate_distance(dist_tar_self);
 
 						// We are at the goal
-						if (dist_tar_self < BARRIER_RADIUS) {
+						if (dist_sg_self_cm < BARRIER_RADIUS) {
 							BT_all_stop(0);
 
 							// Own side on left
 							ai->st.state = 81;
 							fprintf(stderr, "[State 72] We are at the goal. Switch to [State 81].\n");
-						} else if (fabs(tar_angle) < BARRIER_ANGLE) { // If still in the angle, keep driving
-							double tar_mag = magnitude(dx, dy);
-							int travel_time = estimate_travel_delay(tar_mag, CPS_FAST, 0);
+						} else if (fabs(sg_self_angle) < BARRIER_ANGLE) { // If still in the angle, keep driving
+							// double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(dist_sg_self, CPS_FAST, 0);
 
 							// Drive to the location
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
@@ -1140,7 +1203,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 
 							ai->st.state = 72;
 							fprintf(stderr, "[State 72] Keep driving to the target location. Remain on [State 72].\n");
-						} else {
+						} else {// not close and not in angle
 							BT_all_stop(0);
 							ai->st.state = 71;
 
@@ -1149,19 +1212,19 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 					} else if (ai->st.state == 81) {
 						// Reached to our goal in defend mode
 						// Turn to the ball
-						double dx = ai->st.ball->cx - ai->st.self->cx;
-						double dy = ai->st.ball->cy - ai->st.self->cy;
+						// double dx = ai->st.ball->cx - ai->st.self->cx;
+						// double dy = ai->st.ball->cy - ai->st.self->cy;
 
-						double target_angle = vector_to_angle(dx, dy);
-						double rotation = min_rotation(angle_prediction, target_angle);
+						// double target_angle = vector_to_angle(dx, dy);
+						// double rotation = min_rotation(angle_prediction, target_angle);
 
-						// Check if we reached the target
-						double dist_tar_self = magnitude(dx, dy);
-						dist_tar_self = translate_distance(dist_tar_self);
+						// // Check if we reached the target
+						// double dist_tar_self = magnitude(dx, dy);
+						// dist_tar_self = translate_distance(dist_tar_self);
 
-						if (fabs(rotation) < BARRIER_ANGLE) {
-							double tar_mag = magnitude(dx, dy);
-							int travel_time = estimate_travel_delay(tar_mag, CPS_FAST, 0);
+						if (fabs(ball_self_angle) < BARRIER_ANGLE) {
+							// double tar_mag = magnitude(dx, dy);
+							int travel_time = estimate_travel_delay(dist_ball_self, CPS_FAST, 0);
 
 							// Drive to the location
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);
@@ -1177,9 +1240,9 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							ai->st.state = 82;
 							fprintf(stderr, "[State 81] Drive to the ball. Switch to [State 82].\n");
 						} else {
-							int angle_time = estimate_angle_delay(rotation);
+							int angle_time = estimate_angle_delay(ball_self_angle);
 
-							if (rotation < 0) {
+							if (ball_self_angle < 0) {
 								// rotate right
 								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
 							} else {
@@ -1189,7 +1252,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							msleep(angle_time);
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 0);
 
-							angle_prediction = target_angle;
+							angle_prediction = ball_self_angle;
 							psuedo_sleep(CAMERA_DELAY);
 
 							// keep turnning
@@ -1197,26 +1260,26 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							fprintf(stderr, "[State 81] We need to turn to the ball. Remain on [State 81].\n");
 						}
 					} else if (ai->st.state == 82) {
-						double dx = ai->st.ball->cx - ai->st.self->cx;
-						double dy = ai->st.ball->cy - ai->st.self->cy;
+						// double dx = ai->st.ball->cx - ai->st.self->cx;
+						// double dy = ai->st.ball->cy - ai->st.self->cy;
 
-						double tar_angle = vector_to_angle(dx, dy);
+						// double tar_angle = vector_to_angle(dx, dy);
 
-						fprintf(stderr, "[State 82] C: %.2f T: %.2f\n", angle_prediction, tar_angle);
+						fprintf(stderr, "[State 82] C: %.2f T: %.2f\n", angle_prediction, ball_self_angle);
 
-						tar_angle = min_rotation(angle_prediction, tar_angle);
+						// tar_angle = min_rotation(angle_prediction, tar_angle);
 
-						// Check if we reached the target
-						double d_pixel = magnitude(dx, dy);
-						double d_cm = translate_distance(d_pixel);
+						// // Check if we reached the target
+						// double d_pixel = magnitude(dx, dy);
+						// double d_cm = translate_distance(d_pixel);
 
-						if (d_cm < BARRIER_RADIUS) { // If we are close to the ball, switch to attack.
+						if (dist_ball_self_cm < BARRIER_RADIUS) { // If we are close to the ball, switch to attack.
 							BT_all_stop(0);
 							// Own side on left.
 							sound_attack();
 							ai->st.state = 50;
-						} else if (fabs(tar_angle) < BARRIER_ANGLE) { // If still in the angle, keep driving
-							int travel_time = estimate_travel_delay(d_pixel, CPS_FAST, 0);
+						} else if (fabs(ball_self_angle) < BARRIER_ANGLE) { // If still in the angle, keep driving
+							int travel_time = estimate_travel_delay(dist_ball_self, CPS_FAST, 0);
 
 							// Drive to the location
 							BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 100);

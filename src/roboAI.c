@@ -971,7 +971,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
           // variables for self and oppponent status (vector and distance)
           double self_opp_x = -1;
           double self_opp_y = -1;
-          double dist_self_opp; = -1;
+          double dist_self_opp = -1;
           double dist_self_opp_cm = -1;
 					double self_opp_angle = -1;
           double self_opp_rotation = -1;
@@ -1049,7 +1049,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 							fprintf(stderr, "[State 51] Need to turn to the destination (%.2f -> %.2f). Remain [State 51].\n", angle_prediction, tar_self_rotation);
 							int angle_time = estimate_angle_delay(tar_self_rotation);
 
-							if (rotation < 0) {
+							if (tar_self_rotation < 0) {
 								// rotate right
 								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
 							} else {
@@ -1154,7 +1154,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state) {
 						} else {
 							int angle_time = estimate_angle_delay(sg_self_rotation);
 
-							if (rotation < 0) { // Rotate right
+							if (sg_self_rotation < 0) { // Rotate right
 								BT_turn(LEFT_MOTOR, speed, RIGHT_MOTOR, -speed);
 							} else { // Rotate left
 								BT_turn(LEFT_MOTOR, -speed, RIGHT_MOTOR, speed);

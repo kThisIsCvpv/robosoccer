@@ -6,6 +6,7 @@
 // Degrees per second
 //#define DPS 76.6333715
 #define DPS 66.6333715
+//#define DPS 46.6333715
 
 #define MAX_DPS 40.0
 #define CAMERA_DELAY 2000
@@ -19,11 +20,12 @@
 #define ROBO_REAL_HEIGHT 5.6
 
 // Robot Measurements (Webcam)
-#define ROBO_ARENA_WIDTH 119.0
-#define ROBO_ARENA_HEIGHT 46.0
+#define ROBO_ARENA_WIDTH 107.0
+#define ROBO_ARENA_HEIGHT 45.0
 
 // Travel Distance (cm) per Second @ Speed 20
-#define CPS_SLOW 6.4
+//#define CPS_SLOW 6.4
+#define CPS_SLOW 8.2
 
 // Travel Distance (cm) per Second @ Speed 100
 // #define CPS_FAST 19.16
@@ -31,6 +33,12 @@
 
 // This is the angle that we predict we're facing.
 double angle_prediction = -1.0;
+
+// Ground truth motion model.
+#define MODEL_TIME_MIN 500
+
+double model_start_x = -1.0;
+double model_start_y = -1.0;
 
 int estimate_angle_delay(double angle) {
 	double abs = fabs(angle);

@@ -1,0 +1,8 @@
+roboSoccer 1.0.2015
+
+Device information:
+  Device path:  /dev/video2
+Stream settings:
+  Frame format: YUYV
+  Frame size:   1280x720
+  Frame rate:   10/1 fps (requested frame rate 30 fps is not supported by device)
